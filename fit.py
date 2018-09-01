@@ -4,10 +4,10 @@ import numpy as np
 from keras.callbacks import CSVLogger, ModelCheckpoint, ReduceLROnPlateau, EarlyStopping
 from keras.optimizers import Adam
 
-from prepare_datasets import get_train_val_datasets, drop_empty_images, get_unique_img_ids, split_validation_dataset,\
-    load_dataset
 from config import MAX_TRAIN_EPOCHS, MAX_TRAIN_STEPS, BATCH_SIZE, LOAD_WEIGHTS
 from models import UNet
+from prepare_datasets import get_train_val_datasets, drop_empty_images, get_unique_img_ids, split_validation_dataset, \
+    load_dataset
 from utils.data_utils import create_aug_gen, make_image_gen
 from utils.keras_utils import IoU, kaggle_IoU, bin_cross_and_IoU
 
@@ -36,9 +36,9 @@ def get_callbacks(seg_model):
     return [checkpoint, early, reduceLROnPlat, csv_logger]
 
 
-def load_weight_if_possible(seg_model):
+def load_weight_if_possible(seg_model, keras_model):
     try:
-        seg_model.load_weights(seg_model.WEIGHT_PATH)
+        keras_model.load_weights(seg_model.WEIGHT_PATH)
     except OSError:
         print('No file with weights available! Starting from scratch...')
 
@@ -50,24 +50,25 @@ def fit():
     train_df, valid_df = get_train_val_datasets(df, balanced_train_df)
     valid_x, valid_y = split_validation_dataset(valid_df)
 
-    seg_model = UNet().get_model()
+    seg_model = UNet()
+    keras_model = seg_model.get_model()
 
     callbacks_list = get_callbacks(seg_model)
 
     if LOAD_WEIGHTS:
-        load_weight_if_possible(seg_model)
+        load_weight_if_possible(seg_model, keras_model)
 
-    seg_model.compile(optimizer=Adam(0.001, decay=0.000001), loss=bin_cross_and_IoU,
-                      metrics=['binary_accuracy', IoU, kaggle_IoU])
+    keras_model.compile(optimizer=Adam(0.001, decay=0.000001), loss=bin_cross_and_IoU,
+                        metrics=['binary_accuracy', IoU, kaggle_IoU])
 
     step_count = min(MAX_TRAIN_STEPS, train_df.shape[0] // BATCH_SIZE)
     aug_gen = create_aug_gen(make_image_gen(train_df))
-    loss_hist = [seg_model.fit_generator(aug_gen,
-                                         steps_per_epoch=step_count,
-                                         epochs=MAX_TRAIN_EPOCHS,
-                                         validation_data=(valid_x, valid_y),
-                                         callbacks=callbacks_list,
-                                         workers=1)]
+    loss_hist = [keras_model.fit_generator(aug_gen,
+                                           steps_per_epoch=step_count,
+                                           epochs=MAX_TRAIN_EPOCHS,
+                                           validation_data=(valid_x, valid_y),
+                                           callbacks=callbacks_list,
+                                           workers=1)]
     return loss_hist
 
 
