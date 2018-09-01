@@ -33,4 +33,4 @@ def dice_loss(y_true, y_pred, smooth=1.):
 
 
 def bin_cross_and_IoU(y_true, y_pred):
-    return binary_crossentropy(y_true, y_pred) - 10 * K.log(1 - dice_loss(y_true, y_pred))
+    return binary_crossentropy(y_true, y_pred) - K.log(1 - dice_loss(y_true, y_pred))

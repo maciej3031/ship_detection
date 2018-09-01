@@ -10,7 +10,7 @@ class UNet:
     FULL_RES_MODEL_NAME = 'simple_unet_full_res'
     UPSAMPLE_MODE = 'SIMPLE'
     WEIGHT_PATH = os.path.join(CHECKPOINTS_DIR, "{}_weights.best.hdf5".format(MODEL_NAME))
-    FIT_HISTORY_PATH = os.path.join(CHECKPOINTS_DIR, "_history.csv".format(MODEL_NAME))
+    FIT_HISTORY_PATH = os.path.join(CHECKPOINTS_DIR, "{}_history.csv".format(MODEL_NAME))
 
     @staticmethod
     def upsample_conv(filters, kernel_size, strides, padding):
@@ -88,7 +88,7 @@ class UNet2:
     MODEL_NAME = 'simple_unet2'
     FULL_RES_MODEL_NAME = 'simple_unet2_full_res'
     WEIGHT_PATH = os.path.join(CHECKPOINTS_DIR, "{}_weights.best.hdf5".format(MODEL_NAME))
-    FIT_HISTORY_PATH = os.path.join(CHECKPOINTS_DIR, "_history.csv".format(MODEL_NAME))
+    FIT_HISTORY_PATH = os.path.join(CHECKPOINTS_DIR, "{}_history.csv".format(MODEL_NAME))
 
     def get_model(self):
 
@@ -101,36 +101,38 @@ class UNet2:
         c2 = layers.BatchNormalization()(c2)
         c2 = layers.Activation('relu')(c2)
         d1 = layers.Dropout(0.1)(c2)
-
-        c3 = layers.Conv2D(16, (3, 3), padding='same')(d1)
+        
+        p1 = layers.MaxPooling2D((3, 3), 2, padding='same')(d1)
+        
+        c3 = layers.Conv2D(16, (3, 3), padding='same')(p1)
         c3 = layers.BatchNormalization()(c3)
         c3 = layers.Activation('relu')(c3)
         c4 = layers.Conv2D(16, (3, 3), padding='same')(c3)
         c4 = layers.BatchNormalization()(c4)
         c4 = layers.Activation('relu')(c4)
         d2 = layers.Dropout(0.1)(c4)
-
-        p1 = layers.MaxPooling2D((3, 3), 2)(d2)
-
-        c5 = layers.Conv2D(32, (3, 3), padding='same')(p1)
+        
+        p2 = layers.MaxPooling2D((3, 3), 2, padding='same')(d2)
+        
+        c5 = layers.Conv2D(32, (3, 3), padding='same')(p2)
         c5 = layers.BatchNormalization()(c5)
         c5 = layers.Activation('relu')(c5)
         c6 = layers.Conv2D(32, (3, 3), padding='same')(c5)
         c6 = layers.BatchNormalization()(c6)
         c6 = layers.Activation('relu')(c6)
         d3 = layers.Dropout(0.1)(c6)
+        
+        p3 = layers.MaxPooling2D((3, 3), 2, padding='same')(d3)
 
-        p2 = layers.MaxPooling2D((3, 3), 2)(d3)
-
-        c7 = layers.Conv2D(64, (3, 3), padding='same')(p2)
+        c7 = layers.Conv2D(64, (3, 3), padding='same')(p3)
         c7 = layers.BatchNormalization()(c7)
         c7 = layers.Activation('relu')(c7)
         c8 = layers.Conv2D(64, (3, 3), padding='same')(c7)
         c8 = layers.BatchNormalization()(c8)
         c8 = layers.Activation('relu')(c8)
         d4 = layers.Dropout(0.1)(c8)
-
-        u1 = layers.Conv2DTranspose(32, (6, 6), strides=(2, 2), padding='same', use_bias=True)(d4)
+        
+        u1 = layers.Conv2DTranspose(32, (6, 6), strides=(2, 2), padding='same', use_bias=False)(d4)        
         u1 = layers.concatenate([u1, d3])
 
         c9 = layers.Conv2D(32, (3, 3), padding='same')(u1)
@@ -141,7 +143,7 @@ class UNet2:
         c10 = layers.Activation('relu')(c10)
         d5 = layers.Dropout(0.1)(c10)
 
-        u2 = layers.Conv2DTranspose(16, (6, 6), strides=(2, 2), padding='same', use_bias=True)(d5)
+        u2 = layers.Conv2DTranspose(16, (6, 6), strides=(2, 2), padding='same', use_bias=False)(d5)
         u2 = layers.concatenate([u2, d2])
 
         c11 = layers.Conv2D(16, (3, 3), padding='same')(u2)
@@ -151,8 +153,11 @@ class UNet2:
         c12 = layers.BatchNormalization()(c12)
         c12 = layers.Activation('relu')(c12)
         d6 = layers.Dropout(0.1)(c12)
+        
+        u3 = layers.Conv2DTranspose(8, (6, 6), strides=(2, 2), padding='same', use_bias=False)(d6)
+        u3 = layers.concatenate([u3, d1])
 
-        c13 = layers.Conv2D(8, (3, 3), padding='same')(d6)
+        c13 = layers.Conv2D(8, (3, 3), padding='same')(u3)
         c13 = layers.BatchNormalization()(c13)
         c13 = layers.Activation('relu')(c13)
         d7 = layers.Dropout(0.1)(c13)

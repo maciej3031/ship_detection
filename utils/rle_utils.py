@@ -3,8 +3,6 @@ import os
 import numpy as np
 from skimage.morphology import label
 
-print(os.listdir("input"))
-
 
 def rle_decode(rle_mask, shape=(768, 768)):
     '''
