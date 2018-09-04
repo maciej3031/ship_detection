@@ -1,16 +1,13 @@
 import os
 
 from keras import layers, models
+from keras.applications.vgg19 import VGG19
 
 from config import CHECKPOINTS_DIR, NET_SCALING, GAUSSIAN_NOISE, INPUT_SHAPE
 
 
-class UNet:
-    MODEL_NAME = 'simple_unet'
-    FULL_RES_MODEL_NAME = 'simple_unet_full_res'
+class BaseUNet:
     UPSAMPLE_MODE = 'SIMPLE'
-    WEIGHT_PATH = os.path.join(CHECKPOINTS_DIR, "{}_weights.best.hdf5".format(MODEL_NAME))
-    FIT_HISTORY_PATH = os.path.join(CHECKPOINTS_DIR, "{}_history.csv".format(MODEL_NAME))
 
     @staticmethod
     def upsample_conv(filters, kernel_size, strides, padding):
@@ -25,6 +22,220 @@ class UNet:
             return self.upsample_conv(**kwargs)
         else:
             return self.upsample_simple(**kwargs)
+
+
+class VGG19UNetV1(BaseUNet):
+    MODEL_NAME = 'vgg19_unet_v1'
+    FULL_RES_MODEL_NAME = 'vgg19_unet_full_res_v1'
+    UPSAMPLE_MODE = 'DECONV'
+    WEIGHT_PATH = os.path.join(CHECKPOINTS_DIR, "{}_weights.best.hdf5".format(MODEL_NAME))
+    FIT_HISTORY_PATH = os.path.join(CHECKPOINTS_DIR, "{}_history.csv".format(MODEL_NAME))
+
+    def get_model(self):
+        base_model = VGG19(include_top=False, weights='imagenet', input_shape=INPUT_SHAPE)
+
+        block1_conv4 = base_model.get_layer('block1_conv2').output
+        block2_conv4 = base_model.get_layer('block2_conv2').output
+        block3_conv4 = base_model.get_layer('block3_conv4').output
+        block4_conv4 = base_model.get_layer('block4_conv4').output
+        block5_conv4 = base_model.get_layer('block5_conv4').output
+        block5_pool = base_model.get_layer('block5_pool').output
+
+        c6 = layers.Conv2D(512, (3, 3), activation='relu', padding='same')(block5_pool)
+
+        u6 = self.upsample(filters=256, kernel_size=(3, 3), strides=(2, 2), padding='same')(c6)
+        u6 = layers.concatenate([u6, block5_conv4])
+        c6 = layers.Conv2D(512, (3, 3), activation='relu', padding='same')(u6)
+
+        u7 = self.upsample(filters=256, kernel_size=(3, 3), strides=(2, 2), padding='same')(c6)
+        u7 = layers.concatenate([u7, block4_conv4])
+        c7 = layers.Conv2D(512, (3, 3), activation='relu', padding='same')(u7)
+
+        u8 = self.upsample(filters=128, kernel_size=(3, 3), strides=(2, 2), padding='same')(c7)
+        u8 = layers.concatenate([u8, block3_conv4])
+        c8 = layers.Conv2D(256, (3, 3), activation='relu', padding='same')(u8)
+
+        u9 = self.upsample(filters=64, kernel_size=(3, 3), strides=(2, 2), padding='same')(c8)
+        u9 = layers.concatenate([u9, block2_conv4])
+        c9 = layers.Conv2D(128, (3, 3), activation='relu', padding='same')(u9)
+
+        u10 = self.upsample(filters=32, kernel_size=(3, 3), strides=(2, 2), padding='same')(c9)
+        u10 = layers.concatenate([u10, block1_conv4], axis=3)
+        output = layers.Conv2D(1, (3, 3), activation='sigmoid', padding='same')(u10)
+
+        return models.Model(inputs=base_model.input, outputs=[output])
+
+
+class VGG19UNetV2(BaseUNet):
+    MODEL_NAME = 'vgg19_unet_v2'
+    FULL_RES_MODEL_NAME = 'vgg19_unet_full_res_v2'
+    UPSAMPLE_MODE = 'SIMPLE'
+    WEIGHT_PATH = os.path.join(CHECKPOINTS_DIR, "{}_weights.best.hdf5".format(MODEL_NAME))
+    FIT_HISTORY_PATH = os.path.join(CHECKPOINTS_DIR, "{}_history.csv".format(MODEL_NAME))
+
+    def get_model(self):
+        base_model = VGG19(include_top=False, weights='imagenet', input_shape=INPUT_SHAPE)
+
+        block1_conv4 = base_model.get_layer('block1_conv2').output
+        block2_conv4 = base_model.get_layer('block2_conv2').output
+        block3_conv4 = base_model.get_layer('block3_conv4').output
+        block4_conv4 = base_model.get_layer('block4_conv4').output
+        block5_conv4 = base_model.get_layer('block5_conv4').output
+        block5_pool = base_model.get_layer('block5_pool').output
+
+        c6 = layers.Conv2D(512, (3, 3), activation='relu', padding='same')(block5_pool)
+
+        u6 = self.upsample(filters=256, kernel_size=(2, 2), strides=(2, 2), padding='same')(c6)
+        c6 = layers.Conv2D(256, (3, 3), activation='relu', padding='same')(u6)
+        c6 = layers.Conv2D(256, (3, 3), activation='relu', padding='same')(c6)
+        cc1 = layers.concatenate([c6, block5_conv4])
+
+        u7 = self.upsample(filters=256, kernel_size=(2, 2), strides=(2, 2), padding='same')(cc1)
+        c7 = layers.Conv2D(256, (3, 3), activation='relu', padding='same')(u7)
+        c7 = layers.Conv2D(256, (3, 3), activation='relu', padding='same')(c7)
+        cc2 = layers.concatenate([c7, block4_conv4])
+
+        u8 = self.upsample(filters=256, kernel_size=(2, 2), strides=(2, 2), padding='same')(cc2)
+        c8 = layers.Conv2D(256, (3, 3), activation='relu', padding='same')(u8)
+        c8 = layers.Conv2D(256, (3, 3), activation='relu', padding='same')(c8)
+        cc3 = layers.concatenate([c8, block3_conv4])
+
+        u9 = self.upsample(filters=64, kernel_size=(3, 3), strides=(2, 2), padding='same')(cc3)
+        c9 = layers.Conv2D(64, (3, 3), activation='relu', padding='same')(u9)
+        c9 = layers.Conv2D(64, (3, 3), activation='relu', padding='same')(c9)
+        cc4 = layers.concatenate([c9, block2_conv4])
+
+        u10 = self.upsample(filters=32, kernel_size=(3, 3), strides=(2, 2), padding='same')(cc4)
+        c10 = layers.Conv2D(1, (3, 3), activation='relu', padding='same')(u10)
+        c10 = layers.Conv2D(1, (3, 3), activation='relu', padding='same')(c10)
+        cc5 = layers.concatenate([c10, block1_conv4], axis=3)
+
+        output = layers.Conv2D(1, (3, 3), activation='relu', padding='same')(cc5)
+        output = layers.Conv2D(1, (1, 1), activation='sigmoid', padding='same')(output)
+
+        return models.Model(inputs=base_model.input, outputs=[output])
+
+
+class TernausNetV1(BaseUNet):
+    MODEL_NAME = 'ternaus_net_v1'
+    FULL_RES_MODEL_NAME = 'ternaus_net_v1_full_res'
+    UPSAMPLE_MODE = 'DECONV'
+    WEIGHT_PATH = os.path.join(CHECKPOINTS_DIR, "{}_weights.best.hdf5".format(MODEL_NAME))
+    FIT_HISTORY_PATH = os.path.join(CHECKPOINTS_DIR, "{}_history.csv".format(MODEL_NAME))
+
+    def get_model(self):
+        inp = layers.Input(INPUT_SHAPE, name='RGB_Input')
+
+        c1 = layers.Conv2D(64, (3, 3), activation='relu', padding='same')(inp)
+        p1 = layers.MaxPooling2D(pool_size=(2, 2), strides=(2, 2))(c1)
+
+        c2 = layers.Conv2D(128, (3, 3), activation='relu', padding='same')(p1)
+        p2 = layers.MaxPooling2D(pool_size=(2, 2), strides=(2, 2))(c2)
+
+        c3 = layers.Conv2D(256, (3, 3), activation='relu', padding='same')(p2)
+        c3 = layers.Conv2D(256, (3, 3), activation='relu', padding='same')(c3)
+        p3 = layers.MaxPooling2D(pool_size=(2, 2), strides=(2, 2))(c3)
+
+        c4 = layers.Conv2D(512, (3, 3), activation='relu', padding='same')(p3)
+        c4 = layers.Conv2D(512, (3, 3), activation='relu', padding='same')(c4)
+        p4 = layers.MaxPooling2D(pool_size=(2, 2), strides=(2, 2))(c4)
+
+        c5 = layers.Conv2D(512, (3, 3), activation='relu', padding='same')(p4)
+        c5 = layers.Conv2D(512, (3, 3), activation='relu', padding='same')(c5)
+        p5 = layers.MaxPooling2D(pool_size=(2, 2), strides=(2, 2))(c5)
+
+        c6 = layers.Conv2D(512, (3, 3), activation='relu', padding='same')(p5)
+
+        u6 = self.upsample(filters=256, kernel_size=(3, 3), strides=(2, 2), padding='same')(c6)
+        u6 = layers.concatenate([u6, c5])
+        c6 = layers.Conv2D(512, (3, 3), activation='relu', padding='same')(u6)
+
+        u7 = self.upsample(filters=256, kernel_size=(3, 3), strides=(2, 2), padding='same')(c6)
+        u7 = layers.concatenate([u7, c4])
+        c7 = layers.Conv2D(512, (3, 3), activation='relu', padding='same')(u7)
+
+        u8 = self.upsample(filters=128, kernel_size=(3, 3), strides=(2, 2), padding='same')(c7)
+        u8 = layers.concatenate([u8, c3])
+        c8 = layers.Conv2D(256, (3, 3), activation='relu', padding='same')(u8)
+
+        u9 = self.upsample(filters=64, kernel_size=(3, 3), strides=(2, 2), padding='same')(c8)
+        u9 = layers.concatenate([u9, c2])
+        c9 = layers.Conv2D(128, (3, 3), activation='relu', padding='same')(u9)
+
+        u10 = self.upsample(filters=32, kernel_size=(3, 3), strides=(2, 2), padding='same')(c9)
+        u10 = layers.concatenate([u10, c1], axis=3)
+        output = layers.Conv2D(1, (3, 3), activation='sigmoid', padding='same')(u10)
+
+        return models.Model(inputs=[inp], outputs=[output])
+
+
+class TernausNetV2(BaseUNet):
+    MODEL_NAME = 'ternaus_net_v2'
+    FULL_RES_MODEL_NAME = 'ternaus_net_v2_full_res'
+    UPSAMPLE_MODE = 'SIMPLE'
+    WEIGHT_PATH = os.path.join(CHECKPOINTS_DIR, "{}_weights.best.hdf5".format(MODEL_NAME))
+    FIT_HISTORY_PATH = os.path.join(CHECKPOINTS_DIR, "{}_history.csv".format(MODEL_NAME))
+
+    def get_model(self):
+        inp = layers.Input(INPUT_SHAPE, name='RGB_Input')
+
+        c1 = layers.Conv2D(64, (3, 3), activation='relu', padding='same')(inp)
+        p1 = layers.MaxPooling2D(pool_size=(2, 2), strides=(2, 2))(c1)
+
+        c2 = layers.Conv2D(128, (3, 3), activation='relu', padding='same')(p1)
+        p2 = layers.MaxPooling2D(pool_size=(2, 2), strides=(2, 2))(c2)
+
+        c3 = layers.Conv2D(256, (3, 3), activation='relu', padding='same')(p2)
+        c3 = layers.Conv2D(256, (3, 3), activation='relu', padding='same')(c3)
+        p3 = layers.MaxPooling2D(pool_size=(2, 2), strides=(2, 2))(c3)
+
+        c4 = layers.Conv2D(512, (3, 3), activation='relu', padding='same')(p3)
+        c4 = layers.Conv2D(512, (3, 3), activation='relu', padding='same')(c4)
+        p4 = layers.MaxPooling2D(pool_size=(2, 2), strides=(2, 2))(c4)
+
+        c5 = layers.Conv2D(1024, (3, 3), activation='relu', padding='same')(p4)
+        c5 = layers.Conv2D(1024, (3, 3), activation='relu', padding='same')(c5)
+        p5 = layers.MaxPooling2D(pool_size=(2, 2), strides=(2, 2))(c5)
+
+        c6 = layers.Conv2D(1024, (3, 3), activation='relu', padding='same')(p5)
+
+        u6 = self.upsample(filters=256, kernel_size=(2, 2), strides=(2, 2), padding='same')(c6)
+        c6 = layers.Conv2D(256, (3, 3), activation='relu', padding='same')(u6)
+        c6 = layers.Conv2D(256, (3, 3), activation='relu', padding='same')(c6)
+        cc1 = layers.concatenate([c6, c5])
+
+        u7 = self.upsample(filters=256, kernel_size=(2, 2), strides=(2, 2), padding='same')(cc1)
+        c7 = layers.Conv2D(256, (3, 3), activation='relu', padding='same')(u7)
+        c7 = layers.Conv2D(256, (3, 3), activation='relu', padding='same')(c7)
+        cc2 = layers.concatenate([c7, c4])
+
+        u8 = self.upsample(filters=256, kernel_size=(2, 2), strides=(2, 2), padding='same')(cc2)
+        c8 = layers.Conv2D(256, (3, 3), activation='relu', padding='same')(u8)
+        c8 = layers.Conv2D(256, (3, 3), activation='relu', padding='same')(c8)
+        cc3 = layers.concatenate([c8, c3])
+
+        u9 = self.upsample(filters=64, kernel_size=(3, 3), strides=(2, 2), padding='same')(cc3)
+        c9 = layers.Conv2D(64, (3, 3), activation='relu', padding='same')(u9)
+        c9 = layers.Conv2D(64, (3, 3), activation='relu', padding='same')(c9)
+        cc4 = layers.concatenate([c9, c2])
+
+        u10 = self.upsample(filters=32, kernel_size=(3, 3), strides=(2, 2), padding='same')(cc4)
+        c10 = layers.Conv2D(1, (3, 3), activation='relu', padding='same')(u10)
+        c10 = layers.Conv2D(1, (3, 3), activation='relu', padding='same')(c10)
+        cc5 = layers.concatenate([c10, c1], axis=3)
+
+        output = layers.Conv2D(1, (3, 3), activation='relu', padding='same')(cc5)
+        output = layers.Conv2D(1, (1, 1), activation='sigmoid', padding='same')(output)
+
+        return models.Model(inputs=[inp], outputs=[output])
+
+
+class UNet(BaseUNet):
+    MODEL_NAME = 'simple_unet'
+    FULL_RES_MODEL_NAME = 'simple_unet_full_res'
+    UPSAMPLE_MODE = 'SIMPLE'
+    WEIGHT_PATH = os.path.join(CHECKPOINTS_DIR, "{}_weights.best.hdf5".format(MODEL_NAME))
+    FIT_HISTORY_PATH = os.path.join(CHECKPOINTS_DIR, "{}_history.csv".format(MODEL_NAME))
 
     def get_model(self):
         input_img = layers.Input(INPUT_SHAPE, name='RGB_Input')
@@ -84,14 +295,13 @@ class UNet:
         return models.Model(inputs=[input_img], outputs=[d])
 
 
-class UNet2:
+class UNet2(BaseUNet):
     MODEL_NAME = 'simple_unet2'
     FULL_RES_MODEL_NAME = 'simple_unet2_full_res'
     WEIGHT_PATH = os.path.join(CHECKPOINTS_DIR, "{}_weights.best.hdf5".format(MODEL_NAME))
     FIT_HISTORY_PATH = os.path.join(CHECKPOINTS_DIR, "{}_history.csv".format(MODEL_NAME))
 
     def get_model(self):
-
         inp = layers.Input(INPUT_SHAPE, name='RGB_Input')
 
         c1 = layers.Conv2D(8, (3, 3), padding='same')(inp)
@@ -101,9 +311,9 @@ class UNet2:
         c2 = layers.BatchNormalization()(c2)
         c2 = layers.Activation('relu')(c2)
         d1 = layers.Dropout(0.1)(c2)
-        
+
         p1 = layers.MaxPooling2D((3, 3), 2, padding='same')(d1)
-        
+
         c3 = layers.Conv2D(16, (3, 3), padding='same')(p1)
         c3 = layers.BatchNormalization()(c3)
         c3 = layers.Activation('relu')(c3)
@@ -111,9 +321,9 @@ class UNet2:
         c4 = layers.BatchNormalization()(c4)
         c4 = layers.Activation('relu')(c4)
         d2 = layers.Dropout(0.1)(c4)
-        
+
         p2 = layers.MaxPooling2D((3, 3), 2, padding='same')(d2)
-        
+
         c5 = layers.Conv2D(32, (3, 3), padding='same')(p2)
         c5 = layers.BatchNormalization()(c5)
         c5 = layers.Activation('relu')(c5)
@@ -121,7 +331,7 @@ class UNet2:
         c6 = layers.BatchNormalization()(c6)
         c6 = layers.Activation('relu')(c6)
         d3 = layers.Dropout(0.1)(c6)
-        
+
         p3 = layers.MaxPooling2D((3, 3), 2, padding='same')(d3)
 
         c7 = layers.Conv2D(64, (3, 3), padding='same')(p3)
@@ -131,8 +341,8 @@ class UNet2:
         c8 = layers.BatchNormalization()(c8)
         c8 = layers.Activation('relu')(c8)
         d4 = layers.Dropout(0.1)(c8)
-        
-        u1 = layers.Conv2DTranspose(32, (6, 6), strides=(2, 2), padding='same', use_bias=False)(d4)        
+
+        u1 = layers.Conv2DTranspose(32, (6, 6), strides=(2, 2), padding='same', use_bias=False)(d4)
         u1 = layers.concatenate([u1, d3])
 
         c9 = layers.Conv2D(32, (3, 3), padding='same')(u1)
@@ -153,7 +363,7 @@ class UNet2:
         c12 = layers.BatchNormalization()(c12)
         c12 = layers.Activation('relu')(c12)
         d6 = layers.Dropout(0.1)(c12)
-        
+
         u3 = layers.Conv2DTranspose(8, (6, 6), strides=(2, 2), padding='same', use_bias=False)(d6)
         u3 = layers.concatenate([u3, d1])
 

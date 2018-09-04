@@ -29,6 +29,7 @@ def make_image_gen(in_df, batch_size=BATCH_SIZE, img_scaling=IMG_SCALING):
             if len(out_rgb) >= batch_size:
                 yield np.stack(out_rgb, 0) / 255.0, np.stack(out_mask, 0)
                 out_rgb, out_mask = [], []
+                gc.collect()
 
 
 def create_aug_gen(in_gen, seed=None):
@@ -54,3 +55,4 @@ def create_aug_gen(in_gen, seed=None):
                              shuffle=True)
 
         yield next(g_x) / 255.0, next(g_y)
+        gc.collect()

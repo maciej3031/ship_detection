@@ -10,7 +10,6 @@ gc.enable()  # memory is tight
 
 
 def kaggle_IoU(y_true, y_pred):
-    gc.collect()
     score_list = []
     for thresh in DEFAULT_THRESHOLDS:
         iou = IoU(y_true, y_pred, thresh=thresh)

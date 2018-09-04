@@ -6,7 +6,7 @@ from keras.callbacks import CSVLogger, ModelCheckpoint, ReduceLROnPlateau, Early
 from keras.optimizers import Adam
 
 from config import MAX_TRAIN_EPOCHS, MAX_TRAIN_STEPS, BATCH_SIZE, LOAD_WEIGHTS
-from models import UNet, UNet2
+from models import UNet, UNet2, TernausNetV1, TernausNetV2, VGG19UNetV1, VGG19UNetV2
 from prepare_datasets import get_train_val_datasets, drop_empty_images, get_unique_img_ids, split_validation_dataset, \
     load_dataset
 from utils.data_utils import create_aug_gen, make_image_gen
@@ -14,7 +14,8 @@ from utils.keras_utils import IoU, kaggle_IoU, bin_cross_and_IoU
 
 gc.enable()  # memory is tight
 
-AVAILABLE_MODELS = {model.MODEL_NAME: model for model in [UNet2(), UNet()]}
+AVAILABLE_MODELS = {model.MODEL_NAME: model for model in [UNet2(), UNet(), TernausNetV1(),
+                                                          TernausNetV2(), VGG19UNetV1(), VGG19UNetV2()]}
 
 
 def get_callbacks(seg_model):
@@ -31,7 +32,7 @@ def get_callbacks(seg_model):
                                        patience=1,
                                        verbose=1,
                                        mode='min',
-                                       min_delta=0.00001,
+                                       min_delta=0.0001,
                                        cooldown=0,
                                        min_lr=1e-8)
 
@@ -45,14 +46,18 @@ def load_weight_if_possible(seg_model, keras_model):
     except OSError:
         print('No file with weights available! Starting from scratch...')
 
-
-def fit(args):
+        
+def load_data():
     df = load_dataset()
     unique_img_ids = get_unique_img_ids(df)
     balanced_train_df = drop_empty_images(unique_img_ids)
     train_df, valid_df = get_train_val_datasets(df, balanced_train_df)
     valid_x, valid_y = split_validation_dataset(valid_df)
     
+    return train_df, valid_x, valid_y
+        
+
+def fit(train_df, valid_x, valid_y, args):
     seg_model = AVAILABLE_MODELS.get(args['model_name'])
     keras_model = seg_model.get_model()
     print(keras_model.summary())
@@ -72,7 +77,8 @@ def fit(args):
                                            epochs=MAX_TRAIN_EPOCHS,
                                            validation_data=(valid_x, valid_y),
                                            callbacks=callbacks_list,
-                                           workers=1)]
+                                           workers=1,
+                                           max_queue_size=1)]
     return loss_hist
 
 
@@ -82,8 +88,11 @@ if __name__ == '__main__':
     ap.add_argument('-lr', '--learning_rate', type=float, default=0.001)
     
     args = vars(ap.parse_args())
-
+    
+    train_df, valid_x, valid_y = load_data()
+        
     while True:
-        loss_history = fit(args)
+        loss_history = fit(train_df, valid_x, valid_y, args)
+        gc.collect()
         if np.min([mh.history['val_loss'] for mh in loss_history]) < 0.3:
             break
