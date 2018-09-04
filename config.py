@@ -5,7 +5,6 @@ CHECKPOINTS_DIR = 'checkpoints'
 TRAIN_DIR = os.path.join(INPUT_DIR, "train")
 TEST_DIR = os.path.join(INPUT_DIR, "test")
 
-AUGMENT_BRIGHTNESS = False
 AUGMENTATION_DETAILS = dict(rotation_range=90,
                             shear_range=0.01,
                             zoom_range=[0.9, 1.1],
@@ -14,7 +13,7 @@ AUGMENTATION_DETAILS = dict(rotation_range=90,
                             fill_mode='reflect',
                             data_format='channels_last')
 
-LOAD_WEIGHTS = True
+SAMPLES_PER_GROUP = 20000
 GAUSSIAN_NOISE = 0.1
 INPUT_SHAPE = (256, 256, 3)
 DEFAULT_THRESHOLDS = [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95]

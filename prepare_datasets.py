@@ -4,7 +4,7 @@ import os
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
-from config import VALID_IMG_COUNT, TRAIN_DIR, INPUT_DIR
+from config import VALID_IMG_COUNT, TRAIN_DIR, INPUT_DIR, SAMPLES_PER_GROUP
 from utils.data_utils import make_image_gen
 
 gc.enable()
@@ -29,6 +29,11 @@ def drop_empty_images(unique_img_ids):
     return unique_img_ids[unique_img_ids.ships != 0]
 
 
+def get_balanced_dataset(unique_img_ids):
+    return unique_img_ids.groupby('ships').apply(
+        lambda x: x.sample(SAMPLES_PER_GROUP) if len(x) > SAMPLES_PER_GROUP else x)
+
+
 def get_train_val_datasets(df, balanced_train_df):
     train_ids, valid_ids = train_test_split(balanced_train_df,
                                             test_size=VALID_IMG_COUNT,
@@ -36,10 +41,10 @@ def get_train_val_datasets(df, balanced_train_df):
 
     train_df = pd.merge(df, train_ids, on='ImageId')
     valid_df = pd.merge(df, valid_ids, on='ImageId')
-    
+
     return train_df, valid_df
 
 
-def split_validation_dataset(valid_df):
-    valid_gen = make_image_gen(valid_df, VALID_IMG_COUNT)
+def split_validation_dataset(valid_df, classify):
+    valid_gen = make_image_gen(valid_df, VALID_IMG_COUNT, classify=classify)
     return next(valid_gen)
