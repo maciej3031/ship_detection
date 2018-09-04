@@ -33,8 +33,10 @@ def get_train_val_datasets(df, balanced_train_df):
     train_ids, valid_ids = train_test_split(balanced_train_df,
                                             test_size=VALID_IMG_COUNT,
                                             stratify=balanced_train_df['ships'])
-    train_df = pd.merge(df, train_ids)
-    valid_df = pd.merge(df, valid_ids)
+
+    train_df = pd.merge(df, train_ids, on='ImageId')
+    valid_df = pd.merge(df, valid_ids, on='ImageId')
+    
     return train_df, valid_df
 
 

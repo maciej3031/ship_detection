@@ -6,20 +6,20 @@ from keras.callbacks import CSVLogger, ModelCheckpoint, ReduceLROnPlateau, Early
 from keras.optimizers import Adam
 
 from config import MAX_TRAIN_EPOCHS, MAX_TRAIN_STEPS, BATCH_SIZE, LOAD_WEIGHTS
-from models import UNet, UNet2, TernausNetV1, TernausNetV2, VGG19UNetV1, VGG19UNetV2
+from models import UNet, UNet2, TernausNetV1, TernausNetV2, VGG19UNetV1, VGG19UNetV2, ResNet50UnetV1
 from prepare_datasets import get_train_val_datasets, drop_empty_images, get_unique_img_ids, split_validation_dataset, \
     load_dataset
 from utils.data_utils import create_aug_gen, make_image_gen
-from utils.keras_utils import IoU, kaggle_IoU, bin_cross_and_IoU
+from utils.keras_utils import IoU, kaggle_IoU, bin_cross_and_dice_loss, focal_loss, focal_loss_and_dice_loss
 
 gc.enable()  # memory is tight
 
-AVAILABLE_MODELS = {model.MODEL_NAME: model for model in [UNet2(), UNet(), TernausNetV1(),
-                                                          TernausNetV2(), VGG19UNetV1(), VGG19UNetV2()]}
+AVAILABLE_MODELS = {model.MODEL_NAME: model for model in [UNet2(), UNet(), TernausNetV1(), TernausNetV2(),
+                                                          VGG19UNetV1(), VGG19UNetV2(), ResNet50UnetV1()]}
 
 
 def get_callbacks(seg_model):
-    csv_logger = CSVLogger(seg_model.FIT_HISTORY_PATH, append=True, separator=';')
+    csv_logger = CSVLogger(seg_model.FIT_HISTORY_PATH, append=False, separator=';')
     checkpoint = ModelCheckpoint(seg_model.WEIGHT_PATH,
                                  monitor='val_loss',
                                  verbose=1,
@@ -32,7 +32,7 @@ def get_callbacks(seg_model):
                                        patience=1,
                                        verbose=1,
                                        mode='min',
-                                       min_delta=0.0001,
+                                       min_delta=0.001,
                                        cooldown=0,
                                        min_lr=1e-8)
 
@@ -43,6 +43,7 @@ def get_callbacks(seg_model):
 def load_weight_if_possible(seg_model, keras_model):
     try:
         keras_model.load_weights(seg_model.WEIGHT_PATH)
+        print('Weights loaded!')
     except OSError:
         print('No file with weights available! Starting from scratch...')
 
@@ -67,7 +68,7 @@ def fit(train_df, valid_x, valid_y, args):
     if LOAD_WEIGHTS:
         load_weight_if_possible(seg_model, keras_model)
 
-    keras_model.compile(optimizer=Adam(args['learning_rate'], decay=0.000001), loss=bin_cross_and_IoU,
+    keras_model.compile(optimizer=Adam(args['learning_rate'], decay=0.000001), loss=focal_loss_and_dice_loss,
                         metrics=['binary_accuracy', IoU, kaggle_IoU])
 
     step_count = min(MAX_TRAIN_STEPS, train_df.shape[0] // BATCH_SIZE)
@@ -94,5 +95,5 @@ if __name__ == '__main__':
     while True:
         loss_history = fit(train_df, valid_x, valid_y, args)
         gc.collect()
-        if np.min([mh.history['val_loss'] for mh in loss_history]) < 0.3:
+        if np.min([mh.history['val_loss'] for mh in loss_history]) < 0.2:
             break

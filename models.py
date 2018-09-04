@@ -2,6 +2,8 @@ import os
 
 from keras import layers, models
 from keras.applications.vgg19 import VGG19
+from keras.applications.resnet50 import ResNet50
+
 
 from config import CHECKPOINTS_DIR, NET_SCALING, GAUSSIAN_NOISE, INPUT_SHAPE
 
@@ -22,6 +24,49 @@ class BaseUNet:
             return self.upsample_conv(**kwargs)
         else:
             return self.upsample_simple(**kwargs)
+        
+        
+class ResNet50UnetV1(BaseUNet):
+    MODEL_NAME = 'resnet50_unet_v1'
+    FULL_RES_MODEL_NAME = 'resnet50_unet_full_res_v1'
+    UPSAMPLE_MODE = 'DECONV'
+    WEIGHT_PATH = os.path.join(CHECKPOINTS_DIR, "{}_weights.best.hdf5".format(MODEL_NAME))
+    FIT_HISTORY_PATH = os.path.join(CHECKPOINTS_DIR, "{}_history.csv".format(MODEL_NAME))
+
+    def get_model(self):
+        base_model = ResNet50(include_top=False, weights='imagenet', input_shape=INPUT_SHAPE)
+
+        activation_1 = base_model.get_layer('activation_1').output
+        activation_10 = base_model.get_layer('activation_10').output
+        activation_22 = base_model.get_layer('activation_22').output
+        activation_40 = base_model.get_layer('activation_40').output
+        activation_49 = base_model.get_layer('activation_49').output
+
+        c6 = layers.Conv2D(512, (3, 3), activation='relu', padding='same')(base_model.output)
+
+        u6 = layers.concatenate([c6, activation_49])
+        u6 = self.upsample(filters=512, kernel_size=(3, 3), strides=(2, 2), padding='same')(u6)
+        c6 = layers.Conv2D(2048, (3, 3), activation='relu', padding='same')(u6)
+
+        u7 = layers.concatenate([c6, activation_40])
+        u7 = self.upsample(filters=256, kernel_size=(3, 3), strides=(2, 2), padding='same')(u7)
+        c7 = layers.Conv2D(1024, (3, 3), activation='relu', padding='same')(u7)
+
+        u8 = layers.concatenate([c7, activation_22])
+        u8 = self.upsample(filters=128, kernel_size=(4, 4), strides=(2, 2), padding='same')(u8)
+        c8 = layers.Conv2D(512, (3, 3), activation='relu', padding='same')(u8)
+
+        u9 = layers.concatenate([c8, activation_10])
+        u9 = self.upsample(filters=64, kernel_size=(3, 3), strides=(2, 2), padding='same')(u9)
+        c9 = layers.Conv2D(256, (3, 3), activation='relu', padding='same')(u9)
+
+        u10 = layers.concatenate([c9, activation_1], axis=3)
+        u10 = self.upsample(filters=32, kernel_size=(3, 3), strides=(2, 2), padding='same')(u10)
+        c10 = layers.Conv2D(64, (3, 3), activation='relu', padding='same')(u10)
+        
+        output = layers.Conv2D(1, (3, 3), activation='sigmoid', padding='same')(c10)
+
+        return models.Model(inputs=base_model.input, outputs=[output])
 
 
 class VGG19UNetV1(BaseUNet):
