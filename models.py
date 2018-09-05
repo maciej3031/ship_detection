@@ -1,11 +1,12 @@
 import os
 
 from keras import layers, models
-from keras.applications.vgg19 import VGG19
 from keras.applications.resnet50 import ResNet50
-
+from keras.applications.vgg19 import VGG19
 
 from config import CHECKPOINTS_DIR, NET_SCALING, GAUSSIAN_NOISE, INPUT_SHAPE
+from resnet_152 import resnet152_model
+from segmentation_models.segmentation_models import Unet
 
 
 class BaseUNet:
@@ -13,7 +14,8 @@ class BaseUNet:
 
     @staticmethod
     def upsample_conv(filters, kernel_size, strides, padding, **kwargs):
-        return layers.Conv2DTranspose(filters=filters, kernel_size=kernel_size, strides=strides, padding=padding, **kwargs)
+        return layers.Conv2DTranspose(filters=filters, kernel_size=kernel_size, strides=strides, padding=padding,
+                                      **kwargs)
 
     @staticmethod
     def upsample_simple(filters, kernel_size, strides, padding, **kwargs):
@@ -24,8 +26,65 @@ class BaseUNet:
             return self.upsample_conv(**kwargs)
         else:
             return self.upsample_simple(**kwargs)
-        
-        
+
+
+class ResNet152UnetV2(BaseUNet):
+    MODEL_NAME = 'resnet152_unet_v2'
+    FULL_RES_MODEL_NAME = 'resnet152_unet_full_res_v2'
+    UPSAMPLE_MODE = 'DECONV'
+    WEIGHT_PATH = os.path.join(CHECKPOINTS_DIR, "{}_weights.best.hdf5".format(MODEL_NAME))
+    FIT_HISTORY_PATH = os.path.join(CHECKPOINTS_DIR, "{}_history.csv".format(MODEL_NAME))
+
+    def get_model(self):
+        return Unet(backbone_name='resnet152', encoder_weights='imagenet', freeze_encoder=True)
+
+
+class ResNet152Unet(BaseUNet):
+    MODEL_NAME = 'resnet152_unet'
+    FULL_RES_MODEL_NAME = 'resnet152_unet_full_res'
+    UPSAMPLE_MODE = 'DECONV'
+    WEIGHT_PATH = os.path.join(CHECKPOINTS_DIR, "{}_weights.best.hdf5".format(MODEL_NAME))
+    FIT_HISTORY_PATH = os.path.join(CHECKPOINTS_DIR, "{}_history.csv".format(MODEL_NAME))
+
+    def get_model(self):
+        weights_path = os.path.join('checkpoints', 'resnet152_weights_tf.h5')
+        base_model = resnet152_model(weights_path)
+
+        resnet_1 = base_model.get_layer('conv1_relu').output
+        resnet_2 = base_model.get_layer('res2c_relu').output
+        resnet_3 = base_model.get_layer('res3b7_relu').output
+        resnet_4 = base_model.get_layer('res4b35_relu').output
+        resnet_5 = base_model.get_layer('res5c_relu').output
+
+        c6 = layers.Conv2D(512, (3, 3), activation='relu', padding='same')(resnet_5)
+
+        u6 = self.upsample(filters=512, kernel_size=(3, 3), strides=(2, 2), padding='same')(c6)
+        u6 = layers.concatenate([u6, resnet_4])
+        c6 = layers.Conv2D(64, (3, 3), activation='relu', padding='same')(u6)
+        c6 = layers.Conv2D(64, (3, 3), activation='relu', padding='same')(c6)
+
+        u7 = self.upsample(filters=256, kernel_size=(3, 3), strides=(2, 2), padding='same')(c6)
+        u7 = layers.concatenate([u7, resnet_3])
+        c7 = layers.Conv2D(32, (3, 3), activation='relu', padding='same')(u7)
+        c7 = layers.Conv2D(32, (3, 3), activation='relu', padding='same')(c7)
+
+        u8 = self.upsample(filters=128, kernel_size=(3, 3), strides=(2, 2), padding='same')(c7)
+        u8 = layers.Conv2D(128, (2, 2), strides=(1, 1), activation='relu', padding='valid')(u8)
+        u8 = layers.concatenate([u8, resnet_2])
+        c8 = layers.Conv2D(16, (3, 3), activation='relu', padding='same')(u8)
+        c8 = layers.Conv2D(16, (3, 3), activation='relu', padding='same')(c8)
+
+        u9 = self.upsample(filters=64, kernel_size=(3, 3), strides=(2, 2), padding='valid', output_padding=(1, 1))(c8)
+        u9 = layers.concatenate([u9, resnet_1], axis=3)
+        c9 = layers.Conv2D(8, (3, 3), activation='relu', padding='same')(u9)
+        c9 = layers.Conv2D(8, (3, 3), activation='relu', padding='same')(c9)
+
+        u10 = self.upsample(filters=32, kernel_size=(3, 3), strides=(2, 2), padding='same')(c9)
+        output = layers.Conv2D(1, (3, 3), activation='sigmoid', padding='same')(u10)
+
+        return models.Model(inputs=base_model.input, outputs=[output])
+
+
 class ResNet50UnetV1(BaseUNet):
     MODEL_NAME = 'resnet50_unet_v1'
     FULL_RES_MODEL_NAME = 'resnet50_unet_full_res_v1'
@@ -33,15 +92,8 @@ class ResNet50UnetV1(BaseUNet):
     WEIGHT_PATH = os.path.join(CHECKPOINTS_DIR, "{}_weights.best.hdf5".format(MODEL_NAME))
     FIT_HISTORY_PATH = os.path.join(CHECKPOINTS_DIR, "{}_history.csv".format(MODEL_NAME))
 
-    def get_model(self, train_only_top=False):
+    def get_model(self):
         base_model = ResNet50(include_top=False, weights='imagenet', input_shape=INPUT_SHAPE)
-
-        if train_only_top:
-            for layer in base_model.layers:
-                layer.trainable = False
-        else:
-            for layer in base_model.layers:
-                layer.trainable = True
 
         activation_1 = base_model.get_layer('activation_1').output
         activation_10 = base_model.get_layer('activation_10').output
@@ -65,13 +117,13 @@ class ResNet50UnetV1(BaseUNet):
         c8 = layers.Conv2D(512, (3, 3), activation='relu', padding='same')(u8)
 
         u9 = layers.concatenate([c8, activation_10])
-        u9 = self.upsample(filters=64, kernel_size=(3, 3), strides=(2, 2), padding='valid', output_padding=(1,1))(u9)
+        u9 = self.upsample(filters=64, kernel_size=(3, 3), strides=(2, 2), padding='valid', output_padding=(1, 1))(u9)
         c9 = layers.Conv2D(256, (3, 3), activation='relu', padding='same')(u9)
 
         u10 = layers.concatenate([c9, activation_1], axis=3)
         u10 = self.upsample(filters=32, kernel_size=(3, 3), strides=(2, 2), padding='same')(u10)
         c10 = layers.Conv2D(64, (3, 3), activation='relu', padding='same')(u10)
-        
+
         output = layers.Conv2D(1, (3, 3), activation='sigmoid', padding='same')(c10)
 
         return models.Model(inputs=base_model.input, outputs=[output])
@@ -85,30 +137,14 @@ class VGG19UNetV1(BaseUNet):
     FIT_HISTORY_PATH = os.path.join(CHECKPOINTS_DIR, "{}_history.csv".format(MODEL_NAME))
     base_model = VGG19(include_top=False, weights='imagenet', input_shape=INPUT_SHAPE)
 
-    def get_classifier_model(self, train_only_top=False):
-        if train_only_top:
-            for layer in self.base_model.layers:
-                layer.trainable = False
-        else:
-            for layer in self.base_model.layers:
-                layer.trainable = True
-
+    def get_classifier_model(self):
         vgg = self.base_model.output
         flat = layers.Flatten()(vgg)
         output = layers.Dense(1, activation='sigmoid')(flat)
 
         return models.Model(inputs=self.base_model.input, outputs=[output])
 
-    def get_model(self, train_only_top=False):
-
-
-        if train_only_top:
-            for layer in self.base_model.layers:
-                layer.trainable = False
-        else:
-            for layer in self.base_model.layers:
-                layer.trainable = True
-
+    def get_model(self):
         block1_conv4 = self.base_model.get_layer('block1_conv2').output
         block2_conv4 = self.base_model.get_layer('block2_conv2').output
         block3_conv4 = self.base_model.get_layer('block3_conv4').output
@@ -148,15 +184,8 @@ class VGG19UNetV2(BaseUNet):
     WEIGHT_PATH = os.path.join(CHECKPOINTS_DIR, "{}_weights.best.hdf5".format(MODEL_NAME))
     FIT_HISTORY_PATH = os.path.join(CHECKPOINTS_DIR, "{}_history.csv".format(MODEL_NAME))
 
-    def get_model(self, train_only_top=False):
+    def get_model(self):
         base_model = VGG19(include_top=False, weights='imagenet', input_shape=INPUT_SHAPE)
-
-        if train_only_top:
-            for layer in base_model.layers:
-                layer.trainable = False
-        else:
-            for layer in base_model.layers:
-                layer.trainable = True
 
         block1_conv4 = base_model.get_layer('block1_conv2').output
         block2_conv4 = base_model.get_layer('block2_conv2').output
@@ -205,7 +234,7 @@ class TernausNetV1(BaseUNet):
     WEIGHT_PATH = os.path.join(CHECKPOINTS_DIR, "{}_weights.best.hdf5".format(MODEL_NAME))
     FIT_HISTORY_PATH = os.path.join(CHECKPOINTS_DIR, "{}_history.csv".format(MODEL_NAME))
 
-    def get_model(self, train_only_top=False):
+    def get_model(self):
         inp = layers.Input(INPUT_SHAPE, name='RGB_Input')
 
         c1 = layers.Conv2D(64, (3, 3), activation='relu', padding='same')(inp)
@@ -258,7 +287,7 @@ class TernausNetV2(BaseUNet):
     WEIGHT_PATH = os.path.join(CHECKPOINTS_DIR, "{}_weights.best.hdf5".format(MODEL_NAME))
     FIT_HISTORY_PATH = os.path.join(CHECKPOINTS_DIR, "{}_history.csv".format(MODEL_NAME))
 
-    def get_model(self, train_only_top=False):
+    def get_model(self):
         inp = layers.Input(INPUT_SHAPE, name='RGB_Input')
 
         c1 = layers.Conv2D(64, (3, 3), activation='relu', padding='same')(inp)
@@ -319,7 +348,7 @@ class UNet(BaseUNet):
     WEIGHT_PATH = os.path.join(CHECKPOINTS_DIR, "{}_weights.best.hdf5".format(MODEL_NAME))
     FIT_HISTORY_PATH = os.path.join(CHECKPOINTS_DIR, "{}_history.csv".format(MODEL_NAME))
 
-    def get_model(self, train_only_top=False):
+    def get_model(self):
         input_img = layers.Input(INPUT_SHAPE, name='RGB_Input')
         pp_in_layer = input_img
 
@@ -383,7 +412,7 @@ class UNet2(BaseUNet):
     WEIGHT_PATH = os.path.join(CHECKPOINTS_DIR, "{}_weights.best.hdf5".format(MODEL_NAME))
     FIT_HISTORY_PATH = os.path.join(CHECKPOINTS_DIR, "{}_history.csv".format(MODEL_NAME))
 
-    def get_model(self, train_only_top=False):
+    def get_model(self):
         inp = layers.Input(INPUT_SHAPE, name='RGB_Input')
 
         c1 = layers.Conv2D(8, (3, 3), padding='same')(inp)

@@ -16,6 +16,8 @@ Link: https://www.kaggle.com/c/airbus-ship-detection
 ### To try:
 - [ ] As masks provided by organisators are rectangular. It's worth to try using some simple preprocessing to transform masks obtained from UNet to more "rectangular" shape
 
+- [ ] Try these models: https://github.com/qubvel/segmentation_models
+
 ### Requirements:
 - Linux
 - NVIDIA GPU, Cuda, CudaNN
