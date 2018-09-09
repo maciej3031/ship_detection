@@ -3,9 +3,12 @@ import os
 
 import cv2
 import numpy as np
+import pandas as pd
 from keras.preprocessing.image import ImageDataGenerator
+from sklearn.model_selection import train_test_split
 
-from config import BATCH_SIZE, IMG_SCALING, TRAIN_DIR, AUGMENTATION_DETAILS
+from config import BATCH_SIZE, IMG_SCALING, AUGMENTATION_DETAILS
+from config import VALID_IMG_COUNT, TRAIN_DIR, INPUT_DIR, SAMPLES_PER_GROUP
 from utils.rle_utils import masks_as_image
 
 gc.enable()  # memory is tight
@@ -54,3 +57,43 @@ def create_aug_gen(in_gen, seed=None, classify=False):
 
         yield next(g_x) / 255.0, next(g_y) if not classify else in_y
         gc.collect()
+
+
+def load_dataset():
+    return pd.read_csv(os.path.join(INPUT_DIR, "train_ship_segmentations.csv"))
+
+
+def get_unique_img_ids(df):
+    df['ships'] = df['EncodedPixels'].map(lambda c_row: 1 if isinstance(c_row, str) else 0)
+    unique_img_ids = df.groupby('ImageId').agg({'ships': 'sum'}).reset_index()
+    unique_img_ids['has_ship'] = unique_img_ids['ships'].map(lambda x: 1.0 if x > 0 else 0.0)
+
+    # some files are too small/corrupt
+    unique_img_ids['file_size_kb'] = unique_img_ids['ImageId'].map(
+        lambda c_img_id: os.stat(os.path.join(TRAIN_DIR, c_img_id)).st_size / 1024)
+    return unique_img_ids[unique_img_ids['file_size_kb'] > 50]  # keep only +50kb files
+
+
+def drop_empty_images(unique_img_ids):
+    return unique_img_ids[unique_img_ids.ships != 0]
+
+
+def get_balanced_dataset(unique_img_ids):
+    return unique_img_ids.groupby('ships').apply(
+        lambda x: x.sample(SAMPLES_PER_GROUP) if len(x) > SAMPLES_PER_GROUP else x)
+
+
+def get_train_val_datasets(df, balanced_train_df):
+    train_ids, valid_ids = train_test_split(balanced_train_df,
+                                            test_size=VALID_IMG_COUNT,
+                                            stratify=balanced_train_df['ships'])
+
+    train_df = pd.merge(df, train_ids, on='ImageId')
+    valid_df = pd.merge(df, valid_ids, on='ImageId')
+
+    return train_df, valid_df
+
+
+def split_validation_dataset(valid_df, classify):
+    valid_gen = make_image_gen(valid_df, VALID_IMG_COUNT, classify=classify)
+    return next(valid_gen)
