@@ -60,7 +60,9 @@ def create_aug_gen(in_gen, seed=None, classify=False):
 
 
 def load_dataset():
-    return pd.read_csv(os.path.join(INPUT_DIR, "train_ship_segmentations.csv"))
+    train = pd.read_csv(os.path.join(INPUT_DIR, "train_ship_segmentations.csv"))
+    test = pd.read_csv(os.path.join(INPUT_DIR, "test_ship_segmentations.csv"))
+    return pd.concat([train, test])
 
 
 def get_unique_img_ids(df):
