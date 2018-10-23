@@ -32,3 +32,7 @@ Data: https://www.kaggle.com/c/airbus-ship-detection/data
     `python fit.py -mn resnet34_unet_v1 -lr 0.0001`
 
 - To watch some evaluation results, open and run `ship_detection_simple_unet.ipynb`
+
+### Sample results
+
+![alt text](https://github.com/maciej3031/ship_detection/blob/master/examples/example1.png)
