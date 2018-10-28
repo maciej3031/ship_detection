@@ -9,7 +9,7 @@ from keras.optimizers import Adam
 from config import MAX_TRAIN_EPOCHS, MAX_TRAIN_STEPS, BATCH_SIZE, LEARNING_RATE, INITIAL_TRAINING, LOAD_WEIGHTS, \
     DROP_EMPTY_IMAGES, CLASSIFY_MODE, INITIAL_TRAINING_EPOCHS
 from models import UNet, UNet2, TernausNetV1, TernausNetV2, VGG19UNetV1, VGG19UNetV2, ResNet50UnetV1, ResNet152Unet, \
-    ResNet152UnetV2, ResNet34UnetV1
+    ResNet152UnetV2, ResNet34UnetV1, Inceptionv3Unet
 from segmentation_models.segmentation_models.utils import set_trainable
 from utils.data_utils import create_aug_gen, make_image_gen, get_train_val_datasets, drop_empty_images, \
     get_unique_img_ids, split_validation_dataset, load_dataset, get_balanced_dataset
@@ -23,7 +23,7 @@ def warn(*args, **kwargs):
 warnings.warn = warn
 gc.enable()  # memory is tight
 
-AVAILABLE_MODELS = {model.MODEL_NAME: model for model in [UNet2(), UNet(), TernausNetV1(), TernausNetV2(),
+AVAILABLE_MODELS = {model.MODEL_NAME: model for model in [UNet2(), UNet(), TernausNetV1(), TernausNetV2(), Inceptionv3Unet(),
                                                           VGG19UNetV1(), VGG19UNetV2(), ResNet50UnetV1(),
                                                           ResNet152Unet(), ResNet152UnetV2(), ResNet34UnetV1()]}
 
@@ -39,14 +39,14 @@ def get_callbacks(seg_model):
 
     reduceLROnPlat = ReduceLROnPlateau(monitor='val_loss',
                                        factor=0.2,
-                                       patience=1,
+                                       patience=2,
                                        verbose=1,
                                        mode='min',
                                        min_delta=0.0001,
                                        cooldown=0,
                                        min_lr=1e-10)
 
-    early = EarlyStopping(monitor="val_loss", mode="min", verbose=2, patience=15)
+    early = EarlyStopping(monitor="val_loss", mode="min", verbose=2, patience=20)
     return [checkpoint, early, reduceLROnPlat, csv_logger]
 
 
@@ -87,7 +87,7 @@ def fit(train_df, valid_x, valid_y, args):
     if args['load_weights']:
         load_weight_if_possible(seg_model, keras_model)
 
-    keras_model.compile(optimizer=Adam(args['learning_rate'], decay=0.000001),
+    keras_model.compile(optimizer=Adam(args['learning_rate'], decay=0.0000001),
                         loss=focal_loss_and_dice_loss,
                         metrics=['accuracy', IoU, kaggle_IoU])
 

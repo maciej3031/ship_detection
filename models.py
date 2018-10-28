@@ -28,6 +28,18 @@ class BaseUNet:
             return self.upsample_simple(**kwargs)
 
 
+class Inceptionv3Unet(BaseUNet):
+    MODEL_NAME = 'inceptionv3_unet'
+    FULL_RES_MODEL_NAME = 'inceptionv3_unet_full_res'
+    UPSAMPLE_MODE = 'SIMPLE'
+    WEIGHT_PATH = os.path.join(CHECKPOINTS_DIR, "{}_weights.best.hdf5".format(MODEL_NAME))
+    FIT_HISTORY_PATH = os.path.join(CHECKPOINTS_DIR, "{}_history.csv".format(MODEL_NAME))
+
+    def get_model(self, train_only_top=False):
+        return Unet(backbone_name='inceptionv3', encoder_weights='imagenet',
+                    freeze_encoder=train_only_top, decoder_use_batchnorm=True, decoder_filters=(512,256,256,256,128))    
+
+
 class ResNet34UnetV1(BaseUNet):
     MODEL_NAME = 'resnet34_unet_v1'
     FULL_RES_MODEL_NAME = 'resnet34_unet_full_res_v1'
@@ -36,7 +48,8 @@ class ResNet34UnetV1(BaseUNet):
     FIT_HISTORY_PATH = os.path.join(CHECKPOINTS_DIR, "{}_history.csv".format(MODEL_NAME))
 
     def get_model(self, train_only_top=False):
-        return Unet(backbone_name='resnet34', encoder_weights='imagenet', freeze_encoder=train_only_top)
+        return Unet(backbone_name='resnet34', encoder_weights='imagenet',
+                    freeze_encoder=train_only_top, decoder_use_batchnorm=False)
 
 
 class ResNet152UnetV2(BaseUNet):

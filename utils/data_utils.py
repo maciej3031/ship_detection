@@ -7,7 +7,7 @@ import pandas as pd
 from keras.preprocessing.image import ImageDataGenerator
 from sklearn.model_selection import train_test_split
 
-from config import BATCH_SIZE, IMG_SCALING, AUGMENTATION_DETAILS
+from config import BATCH_SIZE, IMG_SCALING, AUGMENTATION_DETAILS, BRIGHTNESS_AUGMENTATION_RANGE
 from config import VALID_IMG_COUNT, TRAIN_DIR, INPUT_DIR, SAMPLES_PER_GROUP
 from utils.rle_utils import masks_as_image
 
@@ -41,7 +41,7 @@ def make_image_gen(in_df, batch_size=BATCH_SIZE, img_scaling=IMG_SCALING, classi
 
 def create_aug_gen(in_gen, seed=None, classify=False):
     np.random.seed(seed if seed is not None else np.random.choice(range(9999)))
-    data_gen = ImageDataGenerator(**AUGMENTATION_DETAILS)
+    data_gen = ImageDataGenerator(**AUGMENTATION_DETAILS, brightness_range=BRIGHTNESS_AUGMENTATION_RANGE)
     for in_x, in_y in in_gen:
         seed = np.random.choice(range(9999))
         # keep the seeds syncronized otherwise the augmentation to the images is different from the masks
@@ -54,15 +54,16 @@ def create_aug_gen(in_gen, seed=None, classify=False):
                                 batch_size=in_x.shape[0],
                                 seed=seed,
                                 shuffle=True)
+            mask = next(g_y)
+            mask = np.where(mask > 0.5, 1, 0)
 
-        yield next(g_x) / 255.0, next(g_y) if not classify else in_y
+        yield next(g_x) / 255.0, mask if not classify else in_y
         gc.collect()
 
 
 def load_dataset():
-    train = pd.read_csv(os.path.join(INPUT_DIR, "train_ship_segmentations.csv"))
-    test = pd.read_csv(os.path.join(INPUT_DIR, "test_ship_segmentations.csv"))
-    return pd.concat([train, test])
+    train = pd.read_csv(os.path.join(INPUT_DIR, "train_ship_segmentations_v2.csv"))
+    return train
 
 
 def get_unique_img_ids(df):
